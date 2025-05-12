@@ -202,7 +202,7 @@ const Footer = () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                TMDB
+                Filmex.to
               </a>
             </p>
           </FooterSection>
@@ -211,7 +211,7 @@ const Footer = () => {
         <div className="mt-8 pt-4 border-t border-white/10 text-center">
           <div className="flex flex-col md:flex-row justify-between items-center gap-2">
             <p className="text-white/50 text-xs flex items-center">
-              © {currentYear} Let's Stream V2.0. All rights reserved.
+              © {currentYear} Filmex Official. All rights reserved.
               <span className="inline-flex items-center mx-1">
                 Built with <Heart className="h-3 w-3 text-accent mx-1" fill="#E63462" /> by the community
               </span>

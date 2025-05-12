@@ -7,7 +7,7 @@ const Logo = () => {
     <Link
       to="/"
       className="flex items-center font-bold group relative py-2"
-      aria-label="Let's Stream"
+      aria-label="Filmex"
     >
       <div className="relative z-10 flex items-center logo-wave">
         <div className="mr-2 relative play-icon">

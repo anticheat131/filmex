@@ -126,8 +126,8 @@ export default defineConfig(({ mode }) => ({
         'offline.html'
       ],
       manifest: {
-        name: "Let's Stream V2.0",
-        short_name: "Let's Stream",
+        name: "Filmex Official Watch Movies & Tv Shows for free",
+        short_name: "Filmex",
         description: "Watch movies and TV shows online",
         theme_color: '#3b82f6',
         background_color: '#0f0f0f',

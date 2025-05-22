@@ -1,11 +1,10 @@
-
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks';
 import { useWatchHistory } from '@/hooks/watch-history';
 import { WatchHistoryItem } from '@/contexts/types/watch-history';
-import { Play, Clock, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { Play, Clock, ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { 
@@ -16,56 +15,42 @@ import {
 } from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
 
+// Firebase imports for Firestore delete
+import { doc, deleteDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase'; // <-- Adjust this import path as per your project
+
 interface ContinueWatchingProps {
   maxItems?: number;
 }
 
 const ContinueWatching = ({ maxItems = 20 }: ContinueWatchingProps) => {
   const { user } = useAuth();
-  const { watchHistory } = useWatchHistory();
   const [continuableItems, setContinuableItems] = useState<WatchHistoryItem[]>([]);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  
-  // Filter and deduplicate watch history
-  const processedHistory = useMemo(() => {
-    if (watchHistory.length === 0) return [];
-    
-    // First, filter out invalid dates
-    const validItems = watchHistory.filter(item => {
-      if (!item.created_at) return false;
-      try {
-        const date = new Date(item.created_at);
-        return !isNaN(date.getTime());
-      } catch {
-        return false;
-      }
-    });
-    
-    // Create a map to store the most recent item for each unique media
-    const uniqueMediaMap = new Map<string, WatchHistoryItem>();
-    
-    validItems.forEach(item => {
-      // Create a unique key for each media, including season and episode for TV shows
-      const key = `${item.media_type}-${item.media_id}${item.media_type === 'tv' ? `-s${item.season}-e${item.episode}` : ''}`;
-      
-      // If we haven't seen this item yet, or if this item is more recent than what we have, update the map
-      if (!uniqueMediaMap.has(key) || new Date(item.created_at) > new Date(uniqueMediaMap.get(key)!.created_at)) {
-        uniqueMediaMap.set(key, item);
-      }
-    });
-    
-    // Convert the map values back to an array and sort by most recent
-    return Array.from(uniqueMediaMap.values())
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [watchHistory]);
-  
+
+  // Load Continue Watching items from Firestore
+  const loadContinueWatching = async () => {
+    if (!user) return;
+    try {
+      const q = query(
+        collection(db, 'users', user.uid, 'continue_watching'),
+        orderBy('updatedAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map(doc => doc.data() as WatchHistoryItem);
+      setContinuableItems(items.slice(0, maxItems));
+    } catch (error) {
+      console.error('Failed to load Continue Watching:', error);
+    }
+  };
+
   useEffect(() => {
-    setContinuableItems(processedHistory.slice(0, maxItems));
-  }, [processedHistory, maxItems]);
+    loadContinueWatching();
+  }, [user, maxItems]);
 
   // Handle scroll position to show/hide arrows
   const handleScroll = () => {
@@ -86,10 +71,10 @@ const ContinueWatching = ({ maxItems = 20 }: ContinueWatchingProps) => {
     const scrollAmount = rowRef.current.clientWidth * 0.75;
     rowRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
   };
-  
+
   const formatLastWatched = (dateString: string) => {
     if (!dateString) return 'Recently';
-    
+
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime()) || date > new Date()) {
@@ -101,23 +86,18 @@ const ContinueWatching = ({ maxItems = 20 }: ContinueWatchingProps) => {
     }
   };
 
-  const formatProgress = (position: number, duration: number) => {
-    if (!duration) return '0%';
-    return `${Math.round((position / duration) * 100)}%`;
-  }
-
   const formatTimeRemaining = (position: number, duration: number) => {
     if (!duration) return '';
     const remaining = Math.max(0, duration - position);
     const minutes = Math.floor(remaining / 60);
     const seconds = Math.floor(remaining % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')} remaining`;
-  }
+  };
 
   if (!user || continuableItems.length === 0) {
     return null;
   }
-  
+
   const handleContinueWatching = (item: WatchHistoryItem) => {
     if (item.media_type === 'movie') {
       navigate(`/watch/${item.media_type}/${item.media_id}`);
@@ -125,19 +105,32 @@ const ContinueWatching = ({ maxItems = 20 }: ContinueWatchingProps) => {
       navigate(`/watch/${item.media_type}/${item.media_id}/${item.season}/${item.episode}`);
     }
   };
-  
+
   const handleNavigateToDetails = (event: React.MouseEvent, item: WatchHistoryItem) => {
     event.stopPropagation();
     navigate(`/${item.media_type === 'movie' ? 'movie' : 'tv'}/${item.media_id}`);
   };
-  
+
+  // Remove from Firestore on click of X
+  const removeFromContinueWatching = async (e: React.MouseEvent, mediaId: string) => {
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'continue_watching', mediaId));
+      // Refresh the list after deletion
+      loadContinueWatching();
+    } catch (error) {
+      console.error('Failed to remove item:', error);
+    }
+  };
+
   return (
     <div className="px-4 md:px-8 mt-8 mb-6">
       <h2 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center">
         <Clock className="h-5 w-5 mr-2 text-accent" />
         Continue Watching
       </h2>
-      
+
       <div 
         className="relative group"
         onMouseEnter={() => setIsHovering(true)}
@@ -183,6 +176,15 @@ const ContinueWatching = ({ maxItems = 20 }: ContinueWatchingProps) => {
               />
               
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
+
+              {/* DELETE BUTTON */}
+              <button
+                onClick={(e) => removeFromContinueWatching(e, item.media_id)}
+                aria-label="Remove from Continue Watching"
+                className="absolute top-2 right-2 z-20 p-1 rounded-full bg-black/70 hover:bg-red-600 text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
               
               <div className="absolute bottom-4 left-4 right-4 z-10">
                 <div className="flex justify-between items-start mb-1">
